@@ -1,0 +1,37 @@
+/* src/styles/reactmde-dark.css */
+
+.react-mde {
+  background-color: #1f1f1f;
+  color: #ffffff;
+  border-radius: 0.5rem;
+  border: 1px solid #333;
+}
+
+.react-mde .mde-header {
+  background-color: #2a2a2a;
+  border-bottom: 1px solid #444;
+}
+
+.react-mde .mde-header .mde-tabs button {
+  background-color: transparent;
+  color: #ccc;
+  border: none;
+}
+
+.react-mde .mde-header .mde-tabs button.selected {
+  color: #fff;
+  font-weight: bold;
+  border-bottom: 2px solid #38bdf8; /* Tailwind sky-400 */
+}
+
+.react-mde .mde-textarea-wrapper textarea {
+  background-color: #1f1f1f;
+  color: #ffffff;
+}
+
+.react-mde .mde-preview {
+  background-color: #1f1f1f;
+  color: #f5f5f5;
+  padding: 1rem;
+  border-top: 1px solid #444;
+}
