@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react'
 import path from 'path'
 
 export default defineConfig({
-  base: '/trikon/', // 👈 REPLACE THIS with your actual repo name
+  base: '/trikon/', // 👈 This must match your GitHub repo name
   plugins: [react()],
   resolve: {
     alias: {
