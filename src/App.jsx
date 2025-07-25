@@ -20,6 +20,8 @@ import AllCourses from "./pages/AllCourses";
 import Exam from "./pages/Exam";
 import Profile from "./pages/Profile";
 import Auth from "./components/Auth"
+import Notifications from "./pages/Notifications"; // Corrected: Ensure 'Notifications' is imported with correct casing
+
 // 📄 Placeholder Page Component
 const Placeholder = ({ label }) => (
   <div className="text-xl font-semibold text-gray-800 dark:text-white p-6">
@@ -34,6 +36,8 @@ const ProtectedRoute = ({ children, session }) => {
   const navigate = useNavigate();
   useEffect(() => {
     // If there's no session and loading is complete, redirect to auth page
+    // Note: This useEffect runs on every render. Consider if you need a more
+    // fine-grained check (e.g., only redirect if session changes from non-null to null)
     if (session === null) {
       navigate('/auth');
     }
@@ -104,9 +108,10 @@ const App = () => {
           <Route path="/enrolled-courses" element={<ProtectedRoute session={session}><Placeholder label="📚 এনরোল্ড কোর্সসমূহ" /></ProtectedRoute>} />
           <Route path="/subscription" element={<ProtectedRoute session={session}><Placeholder label="💳 সাবস্ক্রিপশন" /></ProtectedRoute>} />
           <Route path="/score" element={<ProtectedRoute session={session}><Placeholder label="📊 পরীক্ষার ফলাফল" /></ProtectedRoute>} />
-          <Route path="/notifications" element={<ProtectedRoute session={session}><Placeholder label="🔔 নোটিফিকেশন" /></ProtectedRoute>} />
+          {/* Corrected: Uncommented and used correct component name 'Notifications' */}
+          <Route path="/notifications" element={<ProtectedRoute session={session}><Notifications /></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute session={session}><Profile /></ProtectedRoute>} />
-
+          
           {/* 🛠️ Admin Panel (Protected by ProtectedRoute for general login) */}
           {/* Note: For true admin protection, you'd add role-based checks within ProtectedRoute or Admin component */}
           <Route path="/admin" element={<ProtectedRoute session={session}><Admin /></ProtectedRoute>} />
