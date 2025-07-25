@@ -1,26 +1,30 @@
 // src/pages/admin/QuestionManager.jsx
-import React, { useState, useEffect } from "react";
-import ReactMde from "react-mde";
+import React, { useState, useEffect, useRef } from "react";
+import MDEditor from "@uiw/react-md-editor";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
-import "react-mde/lib/styles/css/react-mde-all.css";
-import "katex/dist/katex.min.css";
+import "@uiw/react-md-editor/markdown-editor.css";
+// import "@uiw/react-markdown-preview/markdown.css";
+// import "katex/dist/katex.min.css";
+// import "mathlive/dist/mathlive-static.css";
+// import "mathlive";
 
 import { supabase } from "../../lib/supabaseClient";
 
 const QuestionManager = () => {
   const [exams, setExams] = useState([]);
   const [selectedExam, setSelectedExam] = useState("");
-  const [questionText, setQuestionText] = useState("");
+  const [questionText, setQuestionText] = useState("Type **markdown**, `code`, or $x^2 + y^2 = z^2$ here");
   const [options, setOptions] = useState(["", "", "", ""]);
   const [correctAnswer, setCorrectAnswer] = useState("");
-  const [explanation, setExplanation] = useState("Type **markdown**, `code`, or $x^2 + y^2 = z^2$ here");
-  const [selectedTab, setSelectedTab] = useState("write");
+  const [explanation, setExplanation] = useState("Explain here with math: $E=mc^2$");
   const [questions, setQuestions] = useState([]);
 
-  // Fetch exams
+  const questionMathRef = useRef(null);
+  const explanationMathRef = useRef(null);
+
   useEffect(() => {
     const fetchExams = async () => {
       const { data } = await supabase.from("exams").select();
@@ -29,7 +33,6 @@ const QuestionManager = () => {
     fetchExams();
   }, []);
 
-  // Fetch questions when exam changes
   useEffect(() => {
     const fetchQuestions = async () => {
       if (!selectedExam) return;
@@ -42,7 +45,6 @@ const QuestionManager = () => {
     fetchQuestions();
   }, [selectedExam]);
 
-  // Handle submit
   const handleSubmit = async () => {
     if (!questionText || options.some((o) => !o) || !correctAnswer) {
       alert("Please fill all fields.");
@@ -66,17 +68,37 @@ const QuestionManager = () => {
     }
   };
 
-  // Handle delete
   const deleteQuestion = async (id) => {
     await supabase.from("questions").delete().eq("id", id);
     setQuestions(questions.filter((q) => q.id !== id));
+  };
+
+  const handleImageUpload = async (event, setMarkdown) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const fileName = `${Date.now()}-${file.name}`;
+    const { data, error } = await supabase.storage
+      .from("question-images")
+      .upload(fileName, file);
+
+    if (error) {
+      alert("Upload failed: " + error.message);
+      return;
+    }
+
+    const { data: urlData } = supabase.storage
+      .from("question-images")
+      .getPublicUrl(fileName);
+
+    const imageMarkdown = `\n![${file.name}](${urlData.publicUrl})\n`;
+    setMarkdown((prev) => prev + imageMarkdown);
   };
 
   return (
     <div className="p-6 max-w-4xl mx-auto text-white">
       <h1 className="text-2xl font-bold mb-4">📘 Question Manager</h1>
 
-      {/* Select Exam */}
       <div className="mb-4">
         <label className="block font-semibold">Select Exam:</label>
         <select
@@ -93,18 +115,31 @@ const QuestionManager = () => {
         </select>
       </div>
 
-      {/* Question Input */}
       <div className="mb-4">
-        <label className="block font-semibold">Question:</label>
-        <textarea
-          className="w-full p-2 mt-1 bg-gray-800 border border-gray-600 rounded"
-          rows={3}
+        <label className="block font-semibold mb-1">Question (Markdown + Math + Images):</label>
+        <MDEditor
           value={questionText}
-          onChange={(e) => setQuestionText(e.target.value)}
+          onChange={setQuestionText}
+          previewOptions={{
+            remarkPlugins: [remarkGfm, remarkMath],
+            rehypePlugins: [rehypeKatex],
+          }}
+          height={300}
         />
+        <input
+          type="file"
+          accept="image/*"
+          className="mt-2"
+          onChange={(e) => handleImageUpload(e, setQuestionText)}
+        />
+        <math-field
+          ref={questionMathRef}
+          className="mt-2 w-full p-2 rounded border border-gray-700 bg-gray-900 text-white"
+          style={{ minHeight: "40px" }}
+          virtual-keyboard-mode="onfocus"
+        ></math-field>
       </div>
 
-      {/* Options */}
       <div className="grid grid-cols-2 gap-4 mb-4">
         {options.map((opt, idx) => (
           <input
@@ -121,7 +156,6 @@ const QuestionManager = () => {
         ))}
       </div>
 
-      {/* Correct Answer */}
       <div className="mb-4">
         <label className="block font-semibold">Correct Answer:</label>
         <input
@@ -131,29 +165,31 @@ const QuestionManager = () => {
         />
       </div>
 
-      {/* Explanation Editor */}
       <div className="mb-4">
-        <label className="block font-semibold mb-1">Explanation (supports Markdown, Math, Images):</label>
-        <ReactMde
+        <label className="block font-semibold mb-1">Explanation (Markdown + Math + Images):</label>
+        <MDEditor
           value={explanation}
           onChange={setExplanation}
-          selectedTab={selectedTab}
-          onTabChange={setSelectedTab}
-          generateMarkdownPreview={(markdown) =>
-            Promise.resolve(
-              <ReactMarkdown
-                children={markdown}
-                remarkPlugins={[remarkGfm, remarkMath]}
-                rehypePlugins={[rehypeKatex]}
-              />
-            )
-          }
-          minEditorHeight={100}
-          minPreviewHeight={100}
+          previewOptions={{
+            remarkPlugins: [remarkGfm, remarkMath],
+            rehypePlugins: [rehypeKatex],
+          }}
+          height={300}
         />
+        <input
+          type="file"
+          accept="image/*"
+          className="mt-2"
+          onChange={(e) => handleImageUpload(e, setExplanation)}
+        />
+        <math-field
+          ref={explanationMathRef}
+          className="mt-2 w-full p-2 rounded border border-gray-700 bg-gray-900 text-white"
+          style={{ minHeight: "40px" }}
+          virtual-keyboard-mode="onfocus"
+        ></math-field>
       </div>
 
-      {/* Submit Button */}
       <button
         onClick={handleSubmit}
         className="px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded font-semibold"
@@ -161,7 +197,6 @@ const QuestionManager = () => {
         + Add Question
       </button>
 
-      {/* List of Questions */}
       <div className="mt-10">
         <h2 className="text-xl font-bold mb-4">Existing Questions</h2>
         {questions.map((q) => (
@@ -169,7 +204,13 @@ const QuestionManager = () => {
             key={q.id}
             className="mb-4 p-4 rounded bg-gray-800 border border-gray-700"
           >
-            <p className="font-semibold">Q: {q.question}</p>
+            <p className="font-semibold">Q:</p>
+            <ReactMarkdown
+              className="prose prose-invert"
+              children={q.question}
+              remarkPlugins={[remarkGfm, remarkMath]}
+              rehypePlugins={[rehypeKatex]}
+            />
             <ul className="list-disc list-inside text-sm mt-1">
               {q.options.map((o, i) => (
                 <li key={i}>{o}</li>

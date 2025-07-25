@@ -5,7 +5,7 @@ const Admin = () => {
   const [password, setPassword] = useState('')
   const [isAuthenticated, setIsAuthenticated] = useState(false)
 
-  const correctPassword = 'vectoradmin2025' // Change later for .env
+  const correctPassword = '1234' // Change later for .env
 
   const handleLogin = () => {
     if (password === correctPassword) setIsAuthenticated(true)
