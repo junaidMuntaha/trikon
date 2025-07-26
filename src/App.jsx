@@ -1,26 +1,46 @@
-// src/App.jsx
 import React, { useState, useEffect } from "react";
-import { Routes, Route, useNavigate } from "react-router-dom"; // Import useNavigate
+import { Routes, Route, useNavigate } from "react-router-dom";
 import Navbar from "./components/Navbar";
 import "katex/dist/katex.min.css";
-import { supabase } from './lib/supabaseClient'; // Import supabase client
-
-// 🧠 Admin Pages
-import Admin from "./pages/Admin";
-import Dashboard from "./pages/admin/Dashboard";
-import CategoryManager from "./pages/admin/CategoryManager";
-import SubjectManager from "./pages/admin/SubjectManager";
-import ChapterManager from "./pages/admin/ChapterManager";
-import ResourceManager from "./pages/admin/ResourceManager";
-import CourseManager from "./pages/admin/CourseManager";
+import { supabase } from "./lib/supabaseClient";
 
 // 🎓 User Pages
 import Classes from "./pages/Classes";
 import AllCourses from "./pages/AllCourses";
 import Exam from "./pages/Exam";
 import Profile from "./pages/Profile";
-import Auth from "./components/Auth"
-import Notifications from "./pages/Notifications"; // Corrected: Ensure 'Notifications' is imported with correct casing
+import Auth from "./components/Auth";
+import Notifications from "./pages/Notifications";
+import Subscription from "./pages/Subscription";
+
+// 📘 Course & Chapter Pages
+import CourseDetail from "./components/CourseDetail";
+import ChapterDetail from "./components/ChapterDetail";
+import ExamPage from "./components/ExamPage";
+
+// 🏠 New Home Page
+import HomePage from "./pages/HomePage";
+
+// 🔒 Protected Route
+const ProtectedRoute = ({ children, session, loadingSession }) => {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!loadingSession && session === null) {
+      navigate("/auth");
+    }
+  }, [session, loadingSession, navigate]);
+
+  if (loadingSession) {
+    return (
+      <div className="flex justify-center items-center min-h-screen text-xl font-semibold text-gray-800 dark:text-white">
+        সেশন যাচাই করা হচ্ছে...
+      </div>
+    );
+  }
+
+  return session ? children : null;
+};
 
 // 📄 Placeholder Page Component
 const Placeholder = ({ label }) => (
@@ -29,32 +49,12 @@ const Placeholder = ({ label }) => (
   </div>
 );
 
-// New component for protected routes
-// This component checks if a session exists before rendering its children.
-// If no session, it redirects to the /auth page.
-const ProtectedRoute = ({ children, session }) => {
-  const navigate = useNavigate();
-  useEffect(() => {
-    // If there's no session and loading is complete, redirect to auth page
-    // Note: This useEffect runs on every render. Consider if you need a more
-    // fine-grained check (e.g., only redirect if session changes from non-null to null)
-    if (session === null) {
-      navigate('/auth');
-    }
-  }, [session, navigate]);
-
-  // Render children only if session exists
-  return session ? children : null;
-};
-
-
 const App = () => {
   const [session, setSession] = useState(null);
   const [loadingSession, setLoadingSession] = useState(true);
-  const navigate = useNavigate(); // Initialize useNavigate hook for programmatic navigation
+  const navigate = useNavigate();
 
   useEffect(() => {
-    // Function to get the current Supabase session
     const getInitialSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       setSession(session);
@@ -63,71 +63,104 @@ const App = () => {
 
     getInitialSession();
 
-    // Set up a listener for authentication state changes
-    // This will update the session state whenever a user logs in, logs out, etc.
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, newSession) => {
       setSession(newSession);
-      // If the new session is null (user logged out), redirect to the authentication page
-      if (!newSession) {
-        navigate('/auth');
-      }
+      if (!newSession) navigate("/auth");
     });
 
-    // Cleanup function for the effect: unsubscribe from the auth listener
     return () => {
       authListener.subscription.unsubscribe();
     };
-  }, [navigate]); // Add navigate to the dependency array to ensure effect re-runs if navigate changes (though it's stable)
-
-  // Show a loading message while the session is being checked
-  if (loadingSession) {
-    return (
-      <div className="flex justify-center items-center min-h-screen text-xl font-semibold text-gray-800 dark:text-white">
-        Checking session...
-      </div>
-    );
-  }
+  }, [navigate]);
 
   return (
     <>
-      {/* Only render the Navbar if a user session exists (i.e., user is logged in) */}
       {session && <Navbar />}
-
-      <main className="min-h-screen p-4 text-black dark:text-white bg-gray-50 dark:bg-gray-900">
+      <main className="min-h-screen p-4 pt-16 text-black dark:text-white bg-gray-50 dark:bg-gray-900">
         <Routes>
-          {/* Public Route for Authentication */}
-          {/* When a user successfully logs in/signs up, navigate them to the profile page */}
-          <Route path="/auth" element={<Auth onLoggedIn={() => navigate('/profile')} />} />
+          {/* 🔓 Public Route */}
+          <Route path="/auth" element={<Auth onLoggedIn={() => navigate("/profile")} />} />
 
-          {/* 🏠 Main User Pages (Protected by ProtectedRoute) */}
-          {/* Wrap all routes that require authentication with ProtectedRoute */}
-          <Route path="/" element={<ProtectedRoute session={session}><Placeholder label="🏠 হোম পেজ" /></ProtectedRoute>} />
-          <Route path="/classes" element={<ProtectedRoute session={session}><Classes /></ProtectedRoute>} />
-          <Route path="/all-courses" element={<ProtectedRoute session={session}><AllCourses /></ProtectedRoute>} />
-          <Route path="/exam" element={<ProtectedRoute session={session}><Exam /></ProtectedRoute>} />
-          <Route path="/enrolled-courses" element={<ProtectedRoute session={session}><Placeholder label="📚 এনরোল্ড কোর্সসমূহ" /></ProtectedRoute>} />
-          <Route path="/subscription" element={<ProtectedRoute session={session}><Placeholder label="💳 সাবস্ক্রিপশন" /></ProtectedRoute>} />
-          <Route path="/score" element={<ProtectedRoute session={session}><Placeholder label="📊 পরীক্ষার ফলাফল" /></ProtectedRoute>} />
-          {/* Corrected: Uncommented and used correct component name 'Notifications' */}
-          <Route path="/notifications" element={<ProtectedRoute session={session}><Notifications /></ProtectedRoute>} />
-          <Route path="/profile" element={<ProtectedRoute session={session}><Profile /></ProtectedRoute>} />
-          
-          {/* 🛠️ Admin Panel (Protected by ProtectedRoute for general login) */}
-          {/* Note: For true admin protection, you'd add role-based checks within ProtectedRoute or Admin component */}
-          <Route path="/admin" element={<ProtectedRoute session={session}><Admin /></ProtectedRoute>} />
-          <Route path="/admin/dashboard" element={<ProtectedRoute session={session}><Dashboard /></ProtectedRoute>} />
-          <Route path="/admin/categories" element={<ProtectedRoute session={session}><CategoryManager /></ProtectedRoute>} />
-          <Route path="/admin/subjects" element={<ProtectedRoute session={session}><SubjectManager /></ProtectedRoute>} />
-          <Route path="/admin/chapters" element={<ProtectedRoute session={session}><ChapterManager /></ProtectedRoute>} />
-          <Route path="/admin/resources" element={<ProtectedRoute session={session}><ResourceManager /></ProtectedRoute>} />
-          <Route path="/admin/courses" element={<ProtectedRoute session={session}><CourseManager /></ProtectedRoute>} />
+          {/* 🏠 Home Page */}
+          <Route path="/" element={
+            <ProtectedRoute session={session} loadingSession={loadingSession}>
+              <HomePage />
+            </ProtectedRoute>
+          } />
 
-          {/* ❌ 404 Not Found Page */}
+          {/* 🎓 User Pages */}
+          <Route path="/classes" element={
+            <ProtectedRoute session={session} loadingSession={loadingSession}>
+              <Classes />
+            </ProtectedRoute>
+          } />
+          <Route path="/all-courses" element={
+            <ProtectedRoute session={session} loadingSession={loadingSession}>
+              <AllCourses />
+            </ProtectedRoute>
+          } />
+          <Route path="/exam" element={
+            <ProtectedRoute session={session} loadingSession={loadingSession}>
+              <Exam />
+            </ProtectedRoute>
+          } />
+          <Route path="/exam/:id" element={
+            <ProtectedRoute session={session} loadingSession={loadingSession}>
+              <ExamPage />
+            </ProtectedRoute>
+          } />
+          <Route path="/profile" element={
+            <ProtectedRoute session={session} loadingSession={loadingSession}>
+              <Profile />
+            </ProtectedRoute>
+          } />
+          <Route path="/notifications" element={
+            <ProtectedRoute session={session} loadingSession={loadingSession}>
+              <Notifications />
+            </ProtectedRoute>
+          } />
+          <Route path="/subscription" element={
+            <ProtectedRoute session={session} loadingSession={loadingSession}>
+              <Subscription />
+            </ProtectedRoute>
+          } />
+          <Route path="/enrolled-courses" element={
+            <ProtectedRoute session={session} loadingSession={loadingSession}>
+              <Placeholder label="📚 এনরোল্ড কোর্সসমূহ" />
+            </ProtectedRoute>
+          } />
+
+          {/* 📘 Course Detail Page */}
+          <Route path="/course/:id" element={
+            <ProtectedRoute session={session} loadingSession={loadingSession}>
+              <CourseDetail />
+            </ProtectedRoute>
+          } />
+
+          {/* 📗 Chapter & Exam Pages */}
+          <Route path="/chapter/:id" element={
+            <ProtectedRoute session={session} loadingSession={loadingSession}>
+              <ChapterDetail />
+            </ProtectedRoute>
+          } />
+          <Route path="/chapter/:id/exam" element={
+            <ProtectedRoute session={session} loadingSession={loadingSession}>
+              <ExamPage />
+            </ProtectedRoute>
+          } />
+
+          {/* ❌ 404 Page */}
           <Route
             path="*"
             element={
-              <div className="text-red-500 font-semibold text-lg p-6">
-                ❌ ৪০৪ - পৃষ্ঠা খুঁজে পাওয়া যায়নি
+              <div className="text-center text-red-600 font-bold py-10 text-lg">
+                ❌ ৪০৪ - পৃষ্ঠা খুঁজে পাওয়া যায়নি <br />
+                <button
+                  onClick={() => navigate("/")}
+                  className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                >
+                  হোমপেজে ফিরে যান
+                </button>
               </div>
             }
           />

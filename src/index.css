@@ -2,9 +2,11 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+@import url('https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;600;700&display=swap');
 
 body {
   @apply bg-zinc-900 text-black;
+  font-family: 'Hind Siliguri', sans-serif;
 }
 
 
@@ -124,3 +126,4 @@ body {
     @apply bg-background text-foreground;
   }
 }
+

@@ -22,9 +22,10 @@ import {
   faRightFromBracket,
   faChevronRight,
   faLock,
-  faUsers, // Corrected: Added faUsers import
-  faPlus, // Added for "Add Friend" button
-  faUserPlus // Another option for "Add Friend"
+  faUsers,
+  faPlus,
+  faUserPlus,
+  faTimes // Added faTimes for the goal modal close button
 } from '@fortawesome/free-solid-svg-icons';
 import { supabase } from '../lib/supabaseClient'; // Import your Supabase client
 
@@ -148,10 +149,10 @@ const Profile = () => {
           .from('user_exam_results')
           .select(`
             *,
-            exams (title, category_id)
+            exams (title, category_id, total_questions) -- Fetch total_questions from exams table
           `)
           .eq('user_id', user.id)
-          .order('exam_date', { ascending: false });
+          .order('attempted_at', { ascending: false }); // Changed to attempted_at as per schema
 
         if (error) throw error;
         setExamHistory(data);
@@ -218,12 +219,24 @@ const Profile = () => {
   }, [user]); // Re-run when user changes (i.e., when session is loaded)
 
   const copyToClipboard = (text) => {
-    navigator.clipboard.writeText(text).then(() => {
+    // Using document.execCommand('copy') for better compatibility in iframes
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    document.body.appendChild(textarea);
+    textarea.select();
+    try {
+      document.execCommand('copy');
       setCopied(true);
       setTimeout(() => {
         setCopied(false);
       }, 2000);
-    });
+    } catch (err) {
+      console.error('Failed to copy text:', err);
+      // Fallback for browsers that don't support execCommand or if it fails
+      // You might want to show a message to the user here
+    } finally {
+      document.body.removeChild(textarea);
+    }
   };
 
   const openModal = (setter) => {
@@ -232,12 +245,15 @@ const Profile = () => {
 
   const closeModal = (setter) => {
     setter(false);
+    setAddFriendMessage(''); // Clear message when closing add friend modal
+    setFriendStudentIdInput(''); // Clear input when closing add friend modal
   };
 
   const updateGoals = async (updatedGoals) => {
     setLoadingGoals(true);
     setGoalsError(null);
     try {
+      // Delete existing goals for the user
       const { error: deleteError } = await supabase
         .from('goals')
         .delete()
@@ -245,19 +261,28 @@ const Profile = () => {
 
       if (deleteError) throw deleteError;
 
-      const goalsToInsert = updatedGoals.map((goal) => ({
-        user_id: user.id,
-        description: goal.description,
-        is_completed: goal.is_completed,
-      })).filter(goal => goal.description.trim() !== '');
+      // Filter out empty goals and prepare for insert
+      const goalsToInsert = updatedGoals
+        .filter(goal => goal.goal_text && goal.goal_text.trim() !== '') // Use goal_text as per schema
+        .map((goal) => ({
+          user_id: user.id,
+          goal_text: goal.goal_text, // Ensure correct field name
+          is_completed: goal.is_completed,
+          target_date: goal.target_date // Include target_date if available
+        }));
 
-      const { data, error: insertError } = await supabase
-        .from('goals')
-        .insert(goalsToInsert)
-        .select();
+      if (goalsToInsert.length > 0) {
+        const { data, error: insertError } = await supabase
+          .from('goals')
+          .insert(goalsToInsert)
+          .select();
 
-      if (insertError) throw insertError;
-      setGoals(data);
+        if (insertError) throw insertError;
+        setGoals(data);
+      } else {
+        setGoals([]); // If no goals to insert, clear the local state
+      }
+
       closeModal(setGoalModalOpen);
     } catch (error) {
       console.error('Error updating goals:', error.message);
@@ -274,6 +299,15 @@ const Profile = () => {
     }
     setGoals(newGoals);
   };
+
+  const addEmptyGoal = () => {
+    setGoals([...goals, { id: Date.now(), goal_text: '', is_completed: false, target_date: null }]);
+  };
+
+  const removeGoal = (indexToRemove) => {
+    setGoals(goals.filter((_, index) => index !== indexToRemove));
+  };
+
 
   const calculateGoalProgress = () => {
     if (!goals || goals.length === 0) return 0;
@@ -331,11 +365,14 @@ const Profile = () => {
       }
 
       // 3. Add friendship (create two entries for simplicity of querying from either side)
+      // The RLS policy for 'friends' table needs to allow inserts with status = 'accepted'
+      // if you're auto-accepting. If it's 'pending', then status should be 'pending'.
+      // Based on previous instructions, it was 'accepted' for auto-accept.
       const { error: insertError } = await supabase
         .from('friends')
         .insert([
-          { user_id: user.id, friend_id: friendId },
-          { user_id: friendId, friend_id: user.id } // Add reverse entry for easier querying
+          { user_id: user.id, friend_id: friendId, status: 'accepted' },
+          { user_id: friendId, friend_id: user.id, status: 'accepted' } // Add reverse entry for easier querying
         ]);
 
       if (insertError) throw insertError;
@@ -386,7 +423,7 @@ const Profile = () => {
 
   if (loadingProfile || loadingGoals || loadingExamHistory || loadingFriends) {
     return (
-      <div className="flex justify-center items-center min-h-screen">
+      <div className="flex justify-center items-center min-h-screen pt-16"> {/* Added pt-16 for navbar */}
         <p className="text-xl text-gray-600">Loading profile data...</p>
       </div>
     );
@@ -394,7 +431,7 @@ const Profile = () => {
 
   if (profileError || goalsError || examHistoryError || friendsError) {
     return (
-      <div className="flex justify-center items-center min-h-screen text-red-600">
+      <div className="flex justify-center items-center min-h-screen pt-16 text-red-600"> {/* Added pt-16 for navbar */}
         <p className="text-xl">Error: {profileError || goalsError || examHistoryError || friendsError}</p>
       </div>
     );
@@ -407,16 +444,20 @@ const Profile = () => {
     class: 'দ্বাদশ শ্রেণি',
     student_id: 'N/A',
     avatar_url: 'https://placehold.co/100x100/cccccc/ffffff?text=U',
-    total_exams: 0,
-    highest_score: 0,
-    leaderboard_rank: '#N/A',
+    total_score: 0, // Ensure default for total_score
+    leaderboard_rank: 'N/A', // Changed to string 'N/A'
     daily_streak: 0,
   };
+
+  // Calculate total exams and highest score from examHistory
+  const totalExams = examHistory.length;
+  const highestScore = examHistory.reduce((max, exam) => Math.max(max, exam.score), 0);
+
 
   const streakDaysRemaining = 20 - (displayProfile.daily_streak || 0); // Assuming 20 days for "বিশ দিনে" badge
 
   return (
-    <div className="max-w-4xl mx-auto p-4 sm:p-6 lg:p-8">
+    <div className="max-w-4xl mx-auto p-4 sm:p-6 lg:p-8 pt-24"> {/* Adjusted pt-24 for the dock-like navbar */}
       {/* Profile Header */}
       <div className="bg-white rounded-2xl shadow-lg p-6 mb-8">
         <div className="flex flex-col sm:flex-row items-center gap-6">
@@ -457,7 +498,7 @@ const Profile = () => {
           {/* Stat 1 */}
           <div className="w-1/3">
             <FontAwesomeIcon icon={faFileAlt} className="text-2xl sm:text-3xl text-blue-500 mb-2" />
-            <p className="text-2xl sm:text-3xl font-bold text-gray-800">{displayProfile.total_exams}</p>
+            <p className="text-2xl sm:text-3xl font-bold text-gray-800">{totalExams}</p> {/* Used calculated totalExams */}
             <p className="text-xs sm:text-base text-gray-500">মোট পরীক্ষা</p>
           </div>
           {/* Divider */}
@@ -465,7 +506,7 @@ const Profile = () => {
           {/* Stat 2 */}
           <div className="w-1/3">
             <FontAwesomeIcon icon={faStar} className="text-2xl sm:text-3xl text-amber-500 mb-2" />
-            <p className="text-2xl sm:text-3xl font-bold text-gray-800">{displayProfile.highest_score}</p>
+            <p className="text-2xl sm:text-3xl font-bold text-gray-800">{highestScore}</p> {/* Used calculated highestScore */}
             <p className="text-xs sm:text-base text-gray-500">সর্বোচ্চ স্কোর</p>
           </div>
           {/* Divider */}
@@ -607,7 +648,7 @@ const Profile = () => {
                   ) : (
                     <FontAwesomeIcon icon={faSquare} className="text-gray-400 text-xl" />
                   )}
-                  <p className={`${goal.is_completed ? 'text-gray-700' : 'text-gray-500'} flex-grow`}>{goal.description}</p>
+                  <p className={`${goal.is_completed ? 'text-gray-700' : 'text-gray-500'} flex-grow`}>{goal.goal_text}</p> {/* Corrected to goal_text */}
                 </div>
               ))}
               {goals.length === 0 && <p className="text-gray-500">কোনো লক্ষ্য সেট করা হয়নি।</p>}
@@ -738,10 +779,10 @@ const Profile = () => {
                 </div>
                 <div className="flex-grow">
                   <h3 className="font-semibold text-lg text-gray-800">{exam.exams?.title || 'Unknown Exam'}</h3>
-                  <p className="text-sm text-gray-500">তারিখ: {new Date(exam.exam_date).toLocaleDateString('bn-BD', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                  <p className="text-sm text-gray-500">তারিখ: {new Date(exam.attempted_at).toLocaleDateString('bn-BD', { day: 'numeric', month: 'long', year: 'numeric' })}</p> {/* Changed to attempted_at */}
                 </div>
                 <div className="text-right">
-                  <p className="font-bold text-xl text-green-600">{exam.score}/{exam.total_score}</p>
+                  <p className="font-bold text-xl text-green-600">{exam.score}/{exam.exams?.total_questions || 'N/A'}</p> {/* Changed to total_questions */}
                   <a href="#" className="text-indigo-600 font-semibold text-sm hover:underline">
                     বিস্তারিত দেখুন &rarr;
                   </a>
@@ -771,7 +812,7 @@ const Profile = () => {
           <a href="#" className="flex items-center justify-between p-3 hover:bg-gray-50/80 transition-colors rounded-lg">
             <div className="flex items-center gap-4">
               <FontAwesomeIcon icon={faHeadset} className="text-gray-500 w-5 text-center" />
-              <span>সহায়তা</span>
+              <span>সাপোর্ট</span>
             </div>
             <FontAwesomeIcon icon={faChevronRight} className="text-gray-400" />
           </a>
@@ -782,67 +823,70 @@ const Profile = () => {
             </div>
             <FontAwesomeIcon icon={faChevronRight} className="text-gray-400" />
           </a>
-          <a href="#" className="flex items-center justify-between p-3 text-red-600 hover:bg-red-50/80 transition-colors rounded-lg">
+          <button
+            onClick={async () => {
+              const { error } = await supabase.auth.signOut();
+              if (error) {
+                console.error('Error logging out:', error.message);
+                // Display a custom message box instead of alert
+                const messageBox = document.createElement('div');
+                messageBox.className = 'fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-red-600 text-white px-6 py-3 rounded-lg shadow-lg z-[1000]';
+                messageBox.innerText = 'Failed to log out.';
+                document.body.appendChild(messageBox);
+                setTimeout(() => {
+                  document.body.removeChild(messageBox);
+                }, 3000);
+              } else {
+                // Supabase auth listener will handle navigation to /auth
+              }
+            }}
+            className="flex items-center justify-between p-3 w-full text-red-500 hover:bg-red-50/80 transition-colors rounded-lg"
+          >
             <div className="flex items-center gap-4">
               <FontAwesomeIcon icon={faRightFromBracket} className="w-5 text-center" />
               <span>লগ আউট</span>
             </div>
-            <FontAwesomeIcon icon={faChevronRight} className="text-red-400" />
-          </a>
+            <FontAwesomeIcon icon={faChevronRight} className="text-gray-400" />
+          </button>
         </div>
       </div>
 
       {/* Goal Setting Modal */}
       {goalModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl animate-fade-in-up">
-            <h2 className="text-2xl font-bold text-gray-800 mb-4">সাপ্তাহিক লক্ষ্য সেট করুন</h2>
-            <div className="space-y-4 max-h-80 overflow-y-auto custom-scrollbar pr-2">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md">
+            <h2 className="text-2xl font-bold text-gray-800 mb-4">আপনার লক্ষ্য সেট করুন</h2>
+            <div className="space-y-4 max-h-60 overflow-y-auto custom-scrollbar pr-2">
               {goals.map((goal, index) => (
                 <div key={goal.id || `edit-goal-${index}`} className="flex items-center gap-3">
                   <input
                     type="checkbox"
-                    checked={goal.is_completed || false}
+                    checked={goal.is_completed}
                     onChange={(e) => handleGoalChange(index, 'is_completed', e.target.checked)}
-                    className="h-5 w-5 text-indigo-600 rounded focus:ring-indigo-500"
+                    className="form-checkbox h-5 w-5 text-green-600 rounded"
                   />
                   <input
                     type="text"
-                    value={goal.description || ''}
-                    onChange={(e) => handleGoalChange(index, 'description', e.target.value)}
-                    className="flex-grow border border-gray-300 rounded-md px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-800"
+                    value={goal.goal_text} // Corrected to goal_text
+                    onChange={(e) => handleGoalChange(index, 'goal_text', e.target.value)} // Corrected to goal_text
                     placeholder="আপনার লক্ষ্য লিখুন..."
+                    className="flex-grow border border-gray-300 rounded-md px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500"
                   />
-                  {/* Option to remove a goal */}
-                  {index > 0 && (
-                    <button
-                      onClick={() => setGoals(goals.filter((_, i) => i !== index))}
-                      className="text-red-500 hover:text-red-700"
-                      title="Remove Goal"
-                    >
-                      <FontAwesomeIcon icon={faTimesCircle} /> {/* Using a suitable icon like faTimesCircle */}
-                    </button>
-                  )}
+                  <button onClick={() => removeGoal(index)} className="text-red-500 hover:text-red-700">
+                    <FontAwesomeIcon icon={faTimes} />
+                  </button>
                 </div>
               ))}
-              <button
-                onClick={() => setGoals([...goals, { description: '', is_completed: false }])}
-                className="w-full bg-indigo-100 text-indigo-700 font-semibold py-2 rounded-md hover:bg-indigo-200 transition"
-              >
-                আরেকটি লক্ষ্য যোগ করুন
+              <button onClick={addEmptyGoal} className="w-full bg-gray-100 text-gray-700 py-2 rounded-md hover:bg-gray-200 transition-colors flex items-center justify-center gap-2">
+                <FontAwesomeIcon icon={faPlus} /> নতুন লক্ষ্য যোগ করুন
               </button>
             </div>
+            {goalsError && <p className="text-red-500 text-sm mt-2">{goalsError}</p>}
             <div className="mt-6 flex justify-end gap-3">
-              <button
-                onClick={() => closeModal(setGoalModalOpen)}
-                className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition"
-              >
+              <button onClick={() => closeModal(setGoalModalOpen)} className="px-5 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition-colors">
                 বাতিল করুন
               </button>
-              <button
-                onClick={() => updateGoals(goals)}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition"
-              >
+              <button onClick={() => updateGoals(goals)} className="px-5 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors">
                 সেভ করুন
               </button>
             </div>
@@ -852,25 +896,25 @@ const Profile = () => {
 
       {/* Add Friend Modal */}
       {addFriendModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl animate-fade-in-up">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md">
             <h2 className="text-2xl font-bold text-gray-800 mb-4">বন্ধু যোগ করুন</h2>
             <form onSubmit={handleAddFriend}>
               <div className="mb-4">
-                <label htmlFor="friendStudentId" className="block text-gray-700 text-sm font-bold mb-2">
-                  বন্ধুর স্টুডেন্ট আইডি:
+                <label htmlFor="friendStudentId" className="block text-gray-700 text-sm font-semibold mb-2">
+                  বন্ধুর স্টুডেন্ট আইডি
                 </label>
                 <input
                   type="text"
                   id="friendStudentId"
-                  className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-                  placeholder="যেমন: ND-2025-A001"
                   value={friendStudentIdInput}
                   onChange={(e) => setFriendStudentIdInput(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
+                  placeholder="বন্ধুর স্টুডেন্ট আইডি লিখুন"
                 />
               </div>
               {addFriendMessage && (
-                <p className={`mb-4 text-sm ${addFriendMessage.includes('Error') ? 'text-red-500' : 'text-green-500'}`}>
+                <p className={`text-sm mb-4 ${addFriendMessage.includes('Error') ? 'text-red-500' : 'text-green-500'}`}>
                   {addFriendMessage}
                 </p>
               )}
@@ -878,13 +922,13 @@ const Profile = () => {
                 <button
                   type="button"
                   onClick={() => closeModal(setAddFriendModalOpen)}
-                  className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition"
+                  className="px-5 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition-colors"
                 >
                   বাতিল করুন
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition"
+                  className="px-5 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
                 >
                   যোগ করুন
                 </button>
